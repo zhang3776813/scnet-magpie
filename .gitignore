@@ -1,0 +1,7 @@
+node_modules/
+test/
+src/login.mjs
+captcha.png
+captcha.jpg
+.captcha-cookie.txt
+*.log

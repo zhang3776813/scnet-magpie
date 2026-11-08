@@ -1,0 +1,37 @@
+{
+  "name": "scnet-magpie",
+  "version": "1.0.0",
+  "description": "SCNet 超算互联网官方 Magpie 插件：登录 SCNet 账号，让 Magpie 网关里的各 Agent 使用超算互联网的模型服务（DeepSeek、Kimi、GLM、Qwen、SCNet-Max 等）。",
+  "type": "module",
+  "main": "./index.mjs",
+  "exports": "./index.mjs",
+  "files": [
+    "index.mjs",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "magpie",
+    "provider",
+    "auth",
+    "magpie-plugin",
+    "opencode",
+    "opencode-plugin",
+    "opencode-auth",
+    "scnet",
+    "超算互联网",
+    "sugon",
+    "llm"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhang3776813/scnet-magpie.git"
+  },
+  "homepage": "https://github.com/zhang3776813/scnet-magpie#readme",
+  "bugs": "https://github.com/zhang3776813/scnet-magpie/issues",
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}

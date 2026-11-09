@@ -27,6 +27,63 @@ import {
   ScnetError,
 } from "./src/api.mjs";
 import { staticModelList, STATIC_MODELS } from "./src/models.mjs";
+import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { writeFileSync } from "node:fs";
+
+// —— 验证码展示（本地 HTTP + 文件双保险） ——
+// magpie 登录页把 instructions 按纯文本渲染，data URL 图片会显示成满屏 base64，
+// 所以验证码改为：本机临时 HTTP 服务直接返回图片（url 字段让浏览器打开），
+// 同时写一份 PNG 到临时目录兜底。10 分钟无请求自动关闭服务。
+let captchaView = null;
+
+async function serveCaptcha(imageBase64) {
+  // 重复登录：先关旧服务
+  if (captchaView) {
+    try { captchaView.close(); } catch { /* 已关 */ }
+    captchaView = null;
+  }
+  const m = /^data:(image\/[a-z]+);/i.exec(imageBase64 ?? "");
+  const mime = m ? m[1].toLowerCase() : "image/png";
+  const b64 = imageBase64.includes(",") ? imageBase64.slice(imageBase64.indexOf(",") + 1) : imageBase64;
+  const buf = Buffer.from(b64, "base64");
+  const ext = mime === "image/jpeg" ? "jpg" : "png";
+  const file = join(tmpdir(), `scnet-captcha-${Date.now()}.${ext}`);
+  try { writeFileSync(file, buf); } catch { /* 落盘失败不影响 HTTP 展示 */ }
+
+  const server = createServer((req, res) => {
+    res.writeHead(200, {
+      "content-type": mime,
+      "cache-control": "no-store",
+    });
+    res.end(buf);
+  });
+  server.on("error", () => { /* 端口被占等：文件兜底仍可用 */ });
+
+  const view = { url: `file:///${file.replace(/\\/g, "/")}`, file, close: () => {} };
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", () => resolve());
+    });
+    const port = server.address()?.port ?? 0;
+    if (port) view.url = `http://127.0.0.1:${port}/captcha`;
+  } catch { /* HTTP 起不来：file:// 兜底 */ }
+
+  const close = () => {
+    clearTimeout(timer);
+    try { server.close(); } catch { /* 已关 */ }
+    if (captchaView?.close === close) captchaView = null;
+  };
+  const timer = setTimeout(close, 10 * 60 * 1000);
+  if (timer.unref) timer.unref();
+  if (server.unref) server.unref(); // 不拖住宿主进程退出；host 活着时服务照常可用
+  view.close = close;
+
+  captchaView = { close, port: server.address()?.port ?? 0 };
+  return view;
+}
 
 const PROVIDER = "scnet";
 const PROVIDER_NAME = "超算互联网 SCNet";
@@ -139,32 +196,39 @@ export const ScnetPlugin = async () => ({
             return { type: "failed", error: "连不上 SCNet 服务器，请检查网络后重试" };
           }
           const captchaStep = { image: captcha.imageBase64, cookie: captcha.cookie };
-          // 验证码图片内嵌在 instructions 里，让用户在终端/页面里直接读
+          // 验证码展示：本地临时 HTTP 服务（浏览器直接看到图片）+ 落盘文件兜底。
+          // 不能用 data URL 内嵌 instructions——magpie 登录页按纯文本渲染，会满屏 base64。
+          const view = await serveCaptcha(captchaStep.image);
+          captchaStep.closeView = view.close;
           return {
-            url: `${PLATFORM_BASE}/login`,
+            url: view.url,
             instructions:
-              `请输入下图验证码（共 4 位）：\n\n` +
-              `![验证码](${captchaStep.image})\n\n` +
-              `验证码图片已内嵌（若无法显示请打开 ${PLATFORM_BASE} 后重试）。`,
+              `验证码图片已在本机打开：${view.url}\n` +
+              `请输入图中 4 位验证码。若浏览器没有自动打开，请手动访问上面的地址；\n` +
+              `也可打开文件查看：${view.file}`,
             method: "code",
             async callback(code, { signal } = {}) {
-              const captchaText = String(code ?? "").trim();
-              if (!captchaText) {
-                return { type: "failed", error: "请输入验证码" };
-              }
               try {
-                return await doPasswordLogin(
-                  username,
-                  password,
-                  captchaText,
-                  captchaStep.cookie
-                );
-              } catch (err) {
-                const msg = err instanceof Error ? err.message : "登录失败";
-                const captchaHint = /验证码|validate|captha|captcha/i.test(msg)
-                  ? "\n（验证码错误或过期，请重试）"
-                  : "";
-                return { type: "failed", error: msg + captchaHint };
+                const captchaText = String(code ?? "").trim();
+                if (!captchaText) {
+                  return { type: "failed", error: "请输入验证码" };
+                }
+                try {
+                  return await doPasswordLogin(
+                    username,
+                    password,
+                    captchaText,
+                    captchaStep.cookie
+                  );
+                } catch (err) {
+                  const msg = err instanceof Error ? err.message : "登录失败";
+                  const captchaHint = /验证码|validate|captha|captcha/i.test(msg)
+                    ? "\n（验证码错误或过期，请重试）"
+                    : "";
+                  return { type: "failed", error: msg + captchaHint };
+                }
+              } finally {
+                view.close();
               }
             },
           };

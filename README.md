@@ -4,8 +4,6 @@
 各 Agent（Claude Code、Codex、Gemini CLI、OpenCode…）用你的 SCNet 账号
 直接使用超算互联网的模型（DeepSeek、Kimi、GLM、Qwen、MiniMax、SCNet-Max 等）。
 
-协议实现完全对照 SCNet 客户端主进程，与官方客户端同一套接入方式。
-
 ## 安装
 
 ```sh

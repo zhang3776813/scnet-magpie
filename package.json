@@ -1,6 +1,6 @@
 {
   "name": "scnet-magpie",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "SCNet 超算互联网官方 Magpie 插件：登录 SCNet 账号，让 Magpie 网关里的各 Agent 使用超算互联网的模型服务（DeepSeek、Kimi、GLM、Qwen、SCNet-Max 等）。",
   "type": "module",
   "main": "./index.mjs",
